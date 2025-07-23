@@ -1,0 +1,9 @@
+dash
+pandas
+numpy
+requests
+kiteconnect
+plotly
+aiohttp
+asyncio
+vaderSentiment

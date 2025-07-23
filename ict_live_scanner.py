@@ -12,8 +12,6 @@ kite = initialize_kite()
 
 # --- 📦 Load NSE Instruments ---
 instruments = pd.DataFrame(kite.instruments("NSE"))
-
-# ✅ Normalize symbols
 instruments['tradingsymbol_clean'] = instruments['tradingsymbol'].str.strip().str.upper()
 
 nifty_50 = [
@@ -27,37 +25,21 @@ nifty_50 = [
 ]
 nifty_50_clean = [s.strip().upper() for s in nifty_50]
 
-# ✅ Correct token mapping
 symbol_tokens = {}
 for sym in nifty_50_clean:
     token_row = instruments[instruments['tradingsymbol_clean'] == sym]
     if not token_row.empty:
         symbol_tokens[sym] = int(token_row.iloc[0]['instrument_token'])
 
-print("✅ Loaded tokens:", symbol_tokens)
-print("✅ INFY token (final):", symbol_tokens.get('INFY'))
-print(instruments[instruments['tradingsymbol_clean'] == 'INFY'])
-
 # --- 📂 Load POI ---
 poi_df = pd.read_csv("poi_2025-07-23.csv")
-
-# 🔁 Add mock POI for INFY to force alert
-mock_row = pd.DataFrame([{
-    'symbol': 'INFY',
-    'type': 'OB',
-    'low': 1,
-    'high': 99999
-}])
+mock_row = pd.DataFrame([{'symbol': 'INFY', 'type': 'OB', 'low': 1, 'high': 99999}])
 poi_df = pd.concat([poi_df, mock_row], ignore_index=True)
-print("✅ Mock POI added for INFY")
 
 alert_log = []
 alert_file = "alert_log.csv"
 if os.path.exists(alert_file):
     alert_log = pd.read_csv(alert_file).to_dict("records")
-    print(f"✅ Loaded {len(alert_log)} past alerts")
-else:
-    print("🆕 No previous alert log found")
 
 # --- Detection logic ---
 def detect_choch_bos(df):
@@ -83,15 +65,12 @@ def get_recent_data(symbol):
     df_all = []
     for interval in ['15minute', '5minute']:
         try:
-            print(f"⏳ Fetching historical for {symbol} [{interval}]...")
             data = kite.historical_data(token, datetime.now() - timedelta(days=3), datetime.now(), interval)
             df = pd.DataFrame(data)
             df['interval'] = interval
             df['date'] = pd.to_datetime(df['date'])
             df_all.append(df)
-            print(f"✅ {symbol} [{interval}] fetched: {len(df)} candles")
-        except Exception as e:
-            print(f"⚠️ {symbol} fetch failed: {e}")
+        except: pass
     return pd.concat(df_all) if df_all else pd.DataFrame()
 
 # --- LTP fetch ---
@@ -100,12 +79,9 @@ def fetch_ltp(symbols):
     for i in range(0, len(symbols), 10):
         batch = symbols[i:i + 10]
         try:
-            print(f"📡 Fetching batch: {batch}")
             res = kite.ltp(batch)
-            print(f"✅ Response keys: {list(res.keys())}")
             all_ltp.update(res)
-        except Exception as e:
-            print(f"❌ LTP fetch failed for batch {batch}: {e}")
+        except: pass
     return all_ltp
 
 # --- Dash Setup ---
@@ -137,19 +113,16 @@ def update_alert_table(n):
     global alert_log
     unique_symbols = poi_df['symbol'].unique()
     ltp_data = fetch_ltp([f"NSE:{sym}" for sym in unique_symbols if sym in symbol_tokens])
-    print("🔎 LTP data keys:", list(ltp_data.keys()))
     for _, row in poi_df.iterrows():
         symbol, ztype, low, high = row['symbol'], row['type'], row['low'], row['high']
         ltp = ltp_data.get(f"NSE:{symbol}", {}).get("last_price")
         if not ltp:
-            print(f"⚠️ {symbol} LTP not found")
             continue
         in_zone = low <= ltp <= high
         if not in_zone:
             continue
         df = get_recent_data(symbol)
         choch_15m, choch_5m, bos_5m = detect_choch_bos(df)
-        print(f"✅ {symbol} ALERT! CHoCH_15m={choch_15m}, BOS_5m={bos_5m}")
         alert = {
             'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'symbol': symbol,
@@ -165,5 +138,7 @@ def update_alert_table(n):
         pd.DataFrame(alert_log).to_csv(alert_file, index=False)
     return alert_log[::-1]
 
+# ✅ Proper binding for Render
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 8050))
+    app.run_server(debug=False, host="0.0.0.0", port=port)
